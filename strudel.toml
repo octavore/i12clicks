@@ -2,20 +2,20 @@
 # See `strudel help config` for the full list of options.
 
 [app]
-name         = "ClickHouseApp"
-bundle_id    = "com.breakfastlabs.clickhouse"
-version      = "0.1.0"
+name      = "ClickHouseApp"
+bundle_id = "com.breakfastlabs.clickhouse"
+version   = "0.1.0"
 # build_number = "1"  # optional, defaults to "1"
 
 # Paths are relative to this file's directory unless absolute.
-# [build]
+[build]
 # source_dir             = "."                  # default: current dir
 # entitlements_json_path = "entitlements.json"  # default: none
 # Bundle icon; either a png or icns file copied in unmodified (set icon.path),
 # or generate an icon from a png/svg at build time:
-# icon.src               = "art.png"
-# icon.scale             = 1.2         # optional
-# icon.background        = "#fefefe" # optional; hex, defaults to white
+icon.src        = "clickhouse.svg"
+icon.scale      = 0.9  # optional
+icon.background = "#FCFF74"
 
 # Apple developer identifiers, used for signing and notarization.
 # Can also be set via env vars.

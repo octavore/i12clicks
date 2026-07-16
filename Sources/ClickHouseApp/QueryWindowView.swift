@@ -71,25 +71,36 @@ struct ResultsTable: View {
                 .foregroundStyle(.secondary)
                 .padding(8)
         } else {
-            ScrollView([.horizontal, .vertical]) {
-                Grid(alignment: .topLeading, horizontalSpacing: 16, verticalSpacing: 6) {
-                    GridRow {
-                        ForEach(Array(result.columns.enumerated()), id: \.offset) { _, name in
-                            Text(name)
-                                .font(.system(.body, design: .monospaced).bold())
-                        }
-                    }
-                    Divider().gridCellUnsizedAxes(.horizontal)
-                    ForEach(Array(result.rows.enumerated()), id: \.offset) { _, row in
+            GeometryReader { proxy in
+                ScrollView([.horizontal, .vertical]) {
+                    Grid(alignment: .leading, horizontalSpacing: 0, verticalSpacing: 0) {
                         GridRow {
-                            ForEach(Array(result.columns.indices), id: \.self) { index in
-                                Text(index < row.count ? row[index] : "")
-                                    .font(.system(.body, design: .monospaced))
+                            ForEach(Array(result.columns.enumerated()), id: \.offset) { _, name in
+                                Text(name)
+                                    .font(.system(.body, design: .monospaced).bold())
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 6)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .background(Color.primary.opacity(0.1))
+                            }
+                        }
+
+                        ForEach(Array(result.rows.enumerated()), id: \.offset) { rowIndex, row in
+                            GridRow {
+                                ForEach(Array(result.columns.indices), id: \.self) { index in
+                                    Text(index < row.count ? row[index] : "")
+                                        .font(.system(.body, design: .monospaced))
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 4)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .background(rowIndex.isMultiple(of: 2) ? Color.clear : Color.primary.opacity(0.06))
+                                }
                             }
                         }
                     }
+                    .padding(8)
+                    .frame(minWidth: proxy.size.width, minHeight: proxy.size.height, alignment: .topLeading)
                 }
-                .padding(8)
             }
         }
     }

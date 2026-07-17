@@ -26,8 +26,7 @@ struct StatusMenuView: View {
                 Button("Stop Server") { server.stop() }
             }
 
-            Button("Open Query Window") { openWindow(id: "query") }
-                .disabled(!isRunning)
+            Button("Open ClickHouse Window") { openWindow(id: "main") }
 
             Divider()
 

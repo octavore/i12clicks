@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import Darwin
 
 enum ServerState: Equatable {
     case notDownloaded
@@ -13,12 +14,20 @@ enum ServerState: Equatable {
 @MainActor
 final class ServerManager: ObservableObject {
     @Published private(set) var state: ServerState = .notDownloaded
+    @Published private(set) var version: String?
+    @Published private(set) var uptimeText: String?
 
     let httpPort = 8123
     let tcpPort = 9000
 
     private var process: Process?
     private var downloadObservation: NSKeyValueObservation?
+    private var startedAt: Date?
+    private var uptimeTimer: Timer?
+    /// PID of a server we didn't spawn ourselves (e.g. left running by a
+    /// previous app session that quit without calling stop()), discovered via
+    /// the ClickHouse status lock file.
+    private var externalPID: pid_t?
 
     private let fm = FileManager.default
 
@@ -34,7 +43,34 @@ final class ServerManager: ObservableObject {
 
     init() {
         if fm.fileExists(atPath: binaryPath.path) {
-            state = .stopped
+            fetchVersion()
+            if let pid = aliveStatusFilePID() {
+                externalPID = pid
+                state = .running
+                startedAt = statusFileStartDate() ?? Date()
+                startUptimeTimer()
+            } else {
+                state = .stopped
+            }
+        }
+    }
+
+    private func fetchVersion() {
+        let binary = binaryPath
+        Task.detached {
+            let p = Process()
+            p.executableURL = binary
+            p.arguments = ["server", "--version"]
+            let pipe = Pipe()
+            p.standardOutput = pipe
+            p.standardError = pipe
+            guard (try? p.run()) != nil else { return }
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            p.waitUntilExit()
+            let output = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            await MainActor.run { [weak self] in
+                self?.version = output?.isEmpty == false ? output : nil
+            }
         }
     }
 
@@ -72,6 +108,7 @@ final class ServerManager: ObservableObject {
             try? removeQuarantine(at: binaryPath)
 
             state = .stopped
+            fetchVersion()
         } catch {
             state = .failed("Download failed: \(error.localizedDescription)")
         }
@@ -104,7 +141,17 @@ final class ServerManager: ObservableObject {
             state = .failed("ClickHouse binary not downloaded yet")
             return
         }
-        guard process == nil else { return }
+        guard process == nil, externalPID == nil else { return }
+
+        if let pid = aliveStatusFilePID() {
+            externalPID = pid
+            state = .running
+            startedAt = statusFileStartDate() ?? Date()
+            startUptimeTimer()
+            return
+        }
+
+        removeStaleStatusFileIfNeeded()
 
         state = .starting
 
@@ -129,6 +176,7 @@ final class ServerManager: ObservableObject {
         p.terminationHandler = { [weak self] _ in
             Task { @MainActor in
                 self?.process = nil
+                self?.stopUptimeTimer()
                 if case .failed = self?.state ?? .stopped {
                     // preserve failure reason
                 } else {
@@ -143,7 +191,11 @@ final class ServerManager: ObservableObject {
             Task {
                 try? await Task.sleep(for: .seconds(1))
                 await MainActor.run {
-                    if self.process != nil { self.state = .running }
+                    if self.process != nil {
+                        self.state = .running
+                        self.startedAt = Date()
+                        self.startUptimeTimer()
+                    }
                 }
             }
         } catch {
@@ -152,8 +204,76 @@ final class ServerManager: ObservableObject {
     }
 
     func stop() {
-        guard let p = process else { return }
-        p.terminate()
+        if let p = process {
+            p.terminate()
+            return
+        }
+        if let pid = externalPID {
+            kill(pid, SIGTERM)
+            externalPID = nil
+            stopUptimeTimer()
+            state = .stopped
+        }
+    }
+
+    private func statusFilePID() -> pid_t? {
+        let statusPath = dataDir.appendingPathComponent("status").path
+        guard let contents = try? String(contentsOfFile: statusPath, encoding: .utf8),
+              let pidLine = contents.split(separator: "\n").first(where: { $0.hasPrefix("PID:") }),
+              let pid = pid_t(pidLine.dropFirst("PID:".count).trimmingCharacters(in: .whitespaces))
+        else { return nil }
+        return pid
+    }
+
+    private func aliveStatusFilePID() -> pid_t? {
+        guard let pid = statusFilePID(), kill(pid, 0) == 0 else { return nil }
+        return pid
+    }
+
+    private func statusFileStartDate() -> Date? {
+        let statusPath = dataDir.appendingPathComponent("status").path
+        guard let contents = try? String(contentsOfFile: statusPath, encoding: .utf8),
+              let line = contents.split(separator: "\n").first(where: { $0.hasPrefix("Started at:") })
+        else { return nil }
+
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        formatter.timeZone = TimeZone.current
+        return formatter.date(from: line.dropFirst("Started at:".count).trimmingCharacters(in: .whitespaces))
+    }
+
+    /// ClickHouse writes `data/status` with the PID of the running server and
+    /// refuses to start if the file exists. If the app was force-quit or crashed,
+    /// the file survives even though no server is actually running, so we clear
+    /// it here when the recorded PID is no longer alive.
+    private func removeStaleStatusFileIfNeeded() {
+        let statusPath = dataDir.appendingPathComponent("status").path
+        guard fm.fileExists(atPath: statusPath), aliveStatusFilePID() == nil else { return }
+        try? fm.removeItem(atPath: statusPath)
+    }
+
+    private func startUptimeTimer() {
+        uptimeTimer?.invalidate()
+        updateUptimeText()
+        uptimeTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.updateUptimeText() }
+        }
+    }
+
+    private func stopUptimeTimer() {
+        uptimeTimer?.invalidate()
+        uptimeTimer = nil
+        startedAt = nil
+        uptimeText = nil
+    }
+
+    private func updateUptimeText() {
+        guard let startedAt else { return }
+        let seconds = Int(Date().timeIntervalSince(startedAt))
+        let h = seconds / 3600
+        let m = (seconds % 3600) / 60
+        let s = seconds % 60
+        uptimeText = h > 0 ? String(format: "%d:%02d:%02d", h, m, s) : String(format: "%d:%02d", m, s)
     }
 
     var dataDirectoryURL: URL { dataDir }

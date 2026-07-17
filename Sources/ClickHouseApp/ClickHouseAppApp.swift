@@ -11,8 +11,8 @@ struct ClickHouseApp: App {
         }
         .menuBarExtraStyle(.window)
 
-        Window("ClickHouse Query", id: "query") {
-            QueryWindowView()
+        Window("ClickHouse", id: "main") {
+            MainWindowView()
                 .environmentObject(server)
         }
     }

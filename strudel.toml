@@ -1,9 +1,9 @@
 [app]
-name      = "ClickHouseApp"
-bundle_id = "com.breakfastlabs.clickhouse"
+name      = "InternationalClicks"
+bundle_id = "com.breakfastlabs.i18clicks"
 version   = "0.1.0"
 
 [build]
-icon.src        = "Sources/ClickHouseApp/Resources/clickhouse.svg"
+icon.src        = "Sources/InternationalClicks/Resources/clickhouse.svg"
 icon.scale      = 0.9  # optional
 icon.background = "#FCFF74"

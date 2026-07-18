@@ -2,7 +2,7 @@ import SwiftUI
 import AppKit
 
 /// Attaches to the "main" window so closing it (red button or Cmd-W) asks
-/// whether to keep running in the menu bar or quit ClickHouseApp entirely.
+/// whether to keep running in the menu bar or quit InternationalClicks entirely.
 struct WindowCloseHandler: NSViewRepresentable {
     @EnvironmentObject var store: InstanceStore
 
@@ -37,7 +37,7 @@ struct WindowCloseHandler: NSViewRepresentable {
             alert.messageText = "Keep ClickHouse Running in the Menu Bar?"
             alert.informativeText = "Closing this window leaves your instances available from the menu bar. Choose Quit to stop all running servers and exit completely."
             alert.addButton(withTitle: "Keep Running")
-            alert.addButton(withTitle: "Quit ClickHouseApp")
+            alert.addButton(withTitle: "Quit InternationalClicks")
 
             let response = alert.runModal()
             if response == .alertSecondButtonReturn {

@@ -1,7 +1,7 @@
 import SwiftUI
 
 @main
-struct ClickHouseApp: App {
+struct InternationalClicksApp: App {
     @StateObject private var store = InstanceStore()
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 

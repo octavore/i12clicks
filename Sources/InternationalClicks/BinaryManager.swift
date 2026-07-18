@@ -30,7 +30,7 @@ final class BinaryManager: ObservableObject {
 
     private var appSupportDir: URL {
         fm.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("ClickHouseApp", isDirectory: true)
+            .appendingPathComponent("InternationalClicks", isDirectory: true)
     }
 
     private var binariesDir: URL { appSupportDir.appendingPathComponent("binaries", isDirectory: true) }

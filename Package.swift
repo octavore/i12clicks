@@ -2,12 +2,12 @@
 import PackageDescription
 
 let package = Package(
-    name: "ClickHouseApp",
+    name: "InternationalClicks",
     platforms: [.macOS(.v14)],
     targets: [
         .executableTarget(
-            name: "ClickHouseApp",
-            path: "Sources/ClickHouseApp",
+            name: "InternationalClicks",
+            path: "Sources/InternationalClicks",
             resources: [.copy("Resources/clickhouse.svg")]
         ),
     ]

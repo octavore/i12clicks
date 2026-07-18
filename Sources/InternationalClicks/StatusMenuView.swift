@@ -19,14 +19,14 @@ struct StatusMenuView: View {
 
         Divider()
 
-        Button("Open ClickHouseApp...") { openWindow(id: "main") }
+        Button("Open InternationalClicks...") { openWindow(id: "main") }
 
         Button("Settings...") { openSettings() }
             .keyboardShortcut(",", modifiers: .command)
 
         Divider()
 
-        Button("Quit ClickHouseApp") {
+        Button("Quit InternationalClicks") {
             NSApplication.shared.terminate(nil)
         }
         .keyboardShortcut("q", modifiers: .command)

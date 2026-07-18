@@ -12,7 +12,7 @@ final class InstanceStore: ObservableObject {
 
     private var appSupportDir: URL {
         fm.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("ClickHouseApp", isDirectory: true)
+            .appendingPathComponent("InternationalClicks", isDirectory: true)
     }
 
     private var instancesRootDir: URL { appSupportDir.appendingPathComponent("instances", isDirectory: true) }

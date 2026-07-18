@@ -6,6 +6,26 @@ import AppKit
 final class AppDelegate: NSObject, NSApplicationDelegate {
     var store: InstanceStore?
 
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(windowVisibilityChanged),
+            name: NSWindow.willCloseNotification, object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(windowVisibilityChanged),
+            name: NSWindow.didBecomeKeyNotification, object: nil)
+    }
+
+    /// Only a titled window (the main window or Settings) should keep the app
+    /// in the Dock; the menu bar extra itself has no such window.
+    @objc private func windowVisibilityChanged(_ notification: Notification) {
+        DispatchQueue.main.async {
+            let hasVisibleWindow = NSApp.windows.contains {
+                $0.isVisible && $0.styleMask.contains(.titled)
+            }
+            NSApp.setActivationPolicy(hasVisibleWindow ? .regular : .accessory)
+        }
+    }
+
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard let store, !store.instances.isEmpty else { return .terminateNow }
 

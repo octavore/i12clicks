@@ -2,8 +2,12 @@ import SwiftUI
 
 struct MainWindowView: View {
     @EnvironmentObject var store: InstanceStore
-    @Environment(\.openSettings) private var openSettings
     @State private var showingCreateSheet = false
+
+    private static let clickhouseLogo: NSImage = {
+        let url = Bundle.module.url(forResource: "clickhouse", withExtension: "svg")!
+        return NSImage(contentsOf: url)!
+    }()
 
     var body: some View {
         NavigationSplitView {
@@ -24,24 +28,28 @@ struct MainWindowView: View {
                 .padding(8)
             }
             .navigationTitle("Instances")
-            .toolbar {
-                ToolbarItem {
-                    Button {
-                        openSettings()
-                    } label: {
-                        Image(systemName: "gearshape")
-                    }
-                }
-            }
         } detail: {
             if let instance = store.instances.first(where: { $0.id == store.selectedInstanceID }) {
                 InstanceDetailView(instance: instance)
             } else {
-                ContentUnavailableView(
-                    "No Instance Selected",
-                    systemImage: "cylinder.split.1x2",
-                    description: Text("Create a ClickHouse instance to get started.")
-                )
+                ContentUnavailableView {
+                    Label {
+                        Text("No Instance Selected")
+                    } icon: {
+                        Image(nsImage: Self.clickhouseLogo)
+                            .renderingMode(.template)
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 48, height: 48)
+                            .foregroundStyle(.primary)
+                    }
+                } description: {
+                    Text("Create a ClickHouse instance to get started.")
+                } actions: {
+                    Button("Add Instance") {
+                        showingCreateSheet = true
+                    }
+                }
             }
         }
         .frame(minWidth: 760, minHeight: 480)

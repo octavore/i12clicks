@@ -26,6 +26,10 @@ strudel build --install     # build and install to /Applications
 strudel run                 # build and launch
 ```
 
+## Acknowledgements
+
+<a href="https://www.flaticon.com/free-icons/pancakes" title="pancakes icons">Pancake icon created by Vitaly Gorbachev - Flaticon</a>
+
 ## License
 
 MIT

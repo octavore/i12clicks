@@ -4,6 +4,7 @@ import SwiftUI
 struct InternationalClicksApp: App {
     @StateObject private var store = InstanceStore()
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+    @Environment(\.openWindow) private var openWindow
 
     private static let menuBarIcon: NSImage = {
         let url = Bundle.module.url(forResource: "clickhouse", withExtension: "svg")!
@@ -20,7 +21,15 @@ struct InternationalClicksApp: App {
             StatusMenuView()
                 .environmentObject(store)
         } label: {
+            // For first time users without instances, always open the app at launch,
+            // The status item's label is created immediately at launch so
+            // we do the check here.
             Image(nsImage: Self.menuBarIcon)
+                .onAppear {
+                    if store.instances.isEmpty {
+                        openWindow(id: "main")
+                    }
+                }
         }
         .menuBarExtraStyle(.menu)
 

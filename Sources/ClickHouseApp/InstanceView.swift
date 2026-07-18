@@ -24,6 +24,18 @@ struct InstanceView: View {
                 LabeledContent("Host", value: "127.0.0.1")
             }
 
+            Section {
+                optionalPortToggle("MySQL Port", port: instance.mysqlPort, isOn: $instance.mysqlPortEnabled)
+                optionalPortToggle("PostgreSQL Port", port: instance.postgresPort, isOn: $instance.postgresPortEnabled)
+                optionalPortToggle("Interserver HTTP Port", port: instance.interserverHTTPPort, isOn: $instance.interserverPortEnabled)
+            } header: {
+                Text("Optional Ports")
+            } footer: {
+                if instance.hasPendingPortChanges {
+                    Text("Changes take effect the next time the server starts.")
+                }
+            }
+
             Section("Files") {
                 LabeledContent("Data Directory") {
                     pathRow(instance.dataDirectoryURL)
@@ -42,10 +54,6 @@ struct InstanceView: View {
                         .buttonStyle(.plain)
                     }
                 }
-            }
-
-            Section {
-                controls
             }
 
             Section {
@@ -71,29 +79,6 @@ struct InstanceView: View {
     }
 
     @ViewBuilder
-    private var controls: some View {
-        switch instance.state {
-        case .notDownloaded:
-            Button("Download ClickHouse") {
-                Task { await instance.ensureBinaryDownloaded() }
-            }
-        case .downloading(let progress):
-            ProgressView(value: progress) {
-                Text("Downloading…")
-            }
-        case .stopped, .failed:
-            Button("Start Server") { instance.start() }
-        case .starting:
-            HStack {
-                ProgressView().controlSize(.small)
-                Text("Starting…")
-            }
-        case .running:
-            Button("Stop Server", role: .destructive) { instance.stop() }
-        }
-    }
-
-    @ViewBuilder
     private var statusBadge: some View {
         switch instance.state {
         case .notDownloaded:
@@ -111,6 +96,17 @@ struct InstanceView: View {
             Label(message, systemImage: "exclamationmark.triangle.fill")
                 .foregroundStyle(.red)
                 .lineLimit(3)
+        }
+    }
+
+    private func optionalPortToggle(_ title: String, port: Int, isOn: Binding<Bool>) -> some View {
+        Toggle(isOn: isOn) {
+            HStack {
+                Text(title)
+                Spacer()
+                Text(String(port))
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 

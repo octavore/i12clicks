@@ -45,9 +45,35 @@ final class InstanceManager: ObservableObject, @MainActor Identifiable {
 
     // Secondary listeners are derived from the unique HTTP port so instances
     // never share the fixed ClickHouse defaults (9004 / 9005 / 9009).
-    private var mysqlPort: Int { httpPort + 1000 }
-    private var postgresPort: Int { httpPort + 2000 }
-    private var interserverHTTPPort: Int { httpPort + 3000 }
+    var mysqlPort: Int { httpPort + 1000 }
+    var postgresPort: Int { httpPort + 2000 }
+    var interserverHTTPPort: Int { httpPort + 3000 }
+
+    var mysqlPortEnabled: Bool {
+        get { config.mysqlPortEnabled }
+        set { config.mysqlPortEnabled = newValue }
+    }
+    var postgresPortEnabled: Bool {
+        get { config.postgresPortEnabled }
+        set { config.postgresPortEnabled = newValue }
+    }
+    var interserverPortEnabled: Bool {
+        get { config.interserverPortEnabled }
+        set { config.interserverPortEnabled = newValue }
+    }
+
+    /// The optional-port flags actually passed to the running server process,
+    /// captured at launch time. Toggling ports while running edits `config`
+    /// immediately but has no effect until the next start, so this lets the UI
+    /// tell the user when their toggle hasn't taken effect yet.
+    @Published private(set) var appliedPortFlags: (mysql: Bool, postgres: Bool, interserver: Bool)?
+
+    var hasPendingPortChanges: Bool {
+        guard let appliedPortFlags else { return false }
+        return appliedPortFlags.mysql != config.mysqlPortEnabled
+            || appliedPortFlags.postgres != config.postgresPortEnabled
+            || appliedPortFlags.interserver != config.interserverPortEnabled
+    }
 
     init(config: InstanceConfig, instanceDir: URL) {
         self.config = config
@@ -119,6 +145,7 @@ final class InstanceManager: ObservableObject, @MainActor Identifiable {
             externalPID = pid
             state = .running
             startedAt = statusFileStartDate() ?? Date()
+            appliedPortFlags = (config.mysqlPortEnabled, config.postgresPortEnabled, config.interserverPortEnabled)
             startUptimeTimer()
             startLogTailing()
             return
@@ -138,13 +165,21 @@ final class InstanceManager: ObservableObject, @MainActor Identifiable {
             "--listen_host=127.0.0.1",
             "--http_port=\(httpPort)",
             "--tcp_port=\(tcpPort)",
-            // ClickHouse also opens MySQL (9004), PostgreSQL (9005) and interserver
-            // HTTP (9009) on fixed defaults. Remap them to per-instance values
-            // derived from the (unique) HTTP port so multiple instances don't collide.
-            "--mysql_port=\(mysqlPort)",
-            "--postgresql_port=\(postgresPort)",
-            "--interserver_http_port=\(interserverHTTPPort)",
         ]
+
+        // ClickHouse also opens MySQL (9004), PostgreSQL (9005) and interserver
+        // HTTP (9009) on fixed defaults. Remap them to per-instance values derived
+        // from the (unique) HTTP port so multiple instances don't collide, unless
+        // the user has disabled that listener for this instance.
+        if config.mysqlPortEnabled {
+            p.arguments?.append("--mysql_port=\(mysqlPort)")
+        }
+        if config.postgresPortEnabled {
+            p.arguments?.append("--postgresql_port=\(postgresPort)")
+        }
+        if config.interserverPortEnabled {
+            p.arguments?.append("--interserver_http_port=\(interserverHTTPPort)")
+        }
 
         fm.createFile(atPath: logPath.path, contents: nil)
         if let handle = try? FileHandle(forWritingTo: logPath) {
@@ -155,6 +190,7 @@ final class InstanceManager: ObservableObject, @MainActor Identifiable {
         p.terminationHandler = { [weak self] _ in
             Task { @MainActor in
                 self?.process = nil
+                self?.appliedPortFlags = nil
                 self?.stopUptimeTimer()
                 self?.stopLogTailing()
                 if case .failed = self?.state ?? .stopped {
@@ -168,6 +204,7 @@ final class InstanceManager: ObservableObject, @MainActor Identifiable {
         do {
             try p.run()
             process = p
+            appliedPortFlags = (config.mysqlPortEnabled, config.postgresPortEnabled, config.interserverPortEnabled)
             startLogTailing()
             Task {
                 try? await Task.sleep(for: .seconds(1))
@@ -192,6 +229,7 @@ final class InstanceManager: ObservableObject, @MainActor Identifiable {
         if let pid = externalPID {
             kill(pid, SIGTERM)
             externalPID = nil
+            appliedPortFlags = nil
             stopUptimeTimer()
             stopLogTailing()
             state = .stopped

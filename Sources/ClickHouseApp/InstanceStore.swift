@@ -8,6 +8,7 @@ final class InstanceStore: ObservableObject {
 
     private let fm = FileManager.default
     private let binaryManager = BinaryManager.shared
+    private var configCancellables: [UUID: AnyCancellable] = [:]
 
     private var appSupportDir: URL {
         fm.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -25,7 +26,16 @@ final class InstanceStore: ObservableObject {
         instances = configs.map { config in
             InstanceManager(config: config, instanceDir: instancesRootDir.appendingPathComponent(config.id.uuidString, isDirectory: true))
         }
+        instances.forEach(observeConfigChanges)
         selectedInstanceID = instances.first?.id
+    }
+
+    /// Persists whenever an instance's config changes (e.g. a port toggle),
+    /// not just on create/delete.
+    private func observeConfigChanges(for manager: InstanceManager) {
+        configCancellables[manager.id] = manager.$config
+            .dropFirst()
+            .sink { [weak self] _ in self?.saveConfigs() }
     }
 
     private func loadConfigs() -> [InstanceConfig] {
@@ -90,6 +100,7 @@ final class InstanceStore: ObservableObject {
         let instanceDir = instancesRootDir.appendingPathComponent(config.id.uuidString, isDirectory: true)
         let manager = InstanceManager(config: config, instanceDir: instanceDir)
         instances.append(manager)
+        observeConfigChanges(for: manager)
         saveConfigs()
         selectedInstanceID = manager.id
         Task { await manager.ensureBinaryDownloaded() }
@@ -103,6 +114,7 @@ final class InstanceStore: ObservableObject {
         try? fm.removeItem(at: instanceDir)
 
         instances.removeAll { $0.id == instance.id }
+        configCancellables.removeValue(forKey: instance.id)
         saveConfigs()
 
         if selectedInstanceID == instance.id {

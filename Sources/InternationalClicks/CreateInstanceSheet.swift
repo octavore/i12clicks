@@ -20,7 +20,12 @@ struct CreateInstanceSheet: View {
             }
 
             if binaryManager.isLoadingReleases {
-                ProgressView("Loading versions…")
+                HStack(spacing: 8) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text("Loading versions…")
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
             } else if let error = binaryManager.releasesError {
                 Text(error).foregroundStyle(.red)
             }

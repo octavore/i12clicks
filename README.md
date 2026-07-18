@@ -15,6 +15,9 @@ A native macOS app for running local ClickHouse instances, inspired by Postgres.
 - Menu bar app
 - Uses official ClickHouse macOS binaries from `builds.clickhouse.com`
 
+## Download
+
+Download the latest build from the [releases page](https://github.com/octavore/i12clicks/releases).
 
 ## Developing
 

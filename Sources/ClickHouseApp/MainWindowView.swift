@@ -45,6 +45,7 @@ struct MainWindowView: View {
             }
         }
         .frame(minWidth: 760, minHeight: 480)
+        .background(WindowCloseHandler().frame(width: 0, height: 0))
         .sheet(isPresented: $showingCreateSheet) {
             CreateInstanceSheet()
                 .environmentObject(store)

@@ -97,5 +97,72 @@ private struct InstanceDetailView: View {
             LogsView(instance: instance)
                 .tabItem { Label("Logs", systemImage: "doc.text") }
         }
+        .navigationTitle(instance.name)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                InstanceControlButton(instance: instance)
+            }
+        }
+    }
+}
+
+struct InstanceControlButton: View {
+    @ObservedObject var instance: InstanceManager
+
+    var body: some View {
+        switch instance.state {
+        case .notDownloaded:
+            CapsuleActionButton(title: "Download", systemImage: "arrow.down.circle", tint: .accentColor) {
+                Task { await instance.ensureBinaryDownloaded() }
+            }
+        case .downloading(let progress):
+            HStack(spacing: 6) {
+                ProgressView().controlSize(.small)
+                Text("Downloading \(Int(progress * 100))%")
+                    .foregroundStyle(.secondary)
+            }
+        case .stopped, .failed:
+            CapsuleActionButton(title: "Start", systemImage: "play.fill", tint: .green) {
+                instance.start()
+            }
+        case .starting:
+            HStack(spacing: 6) {
+                ProgressView().controlSize(.small)
+                Text("Starting…").foregroundStyle(.secondary)
+            }
+        case .running:
+            CapsuleActionButton(title: "Stop", systemImage: "stop.fill", tint: .red) {
+                instance.stop()
+            }
+        }
+    }
+}
+
+private struct CapsuleActionButton: View {
+    let title: String
+    let systemImage: String
+    let tint: Color
+    let action: () -> Void
+
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 5) {
+                Image(systemName: systemImage)
+                    .imageScale(.small)
+                Text(title)
+            }
+            .font(.callout.weight(.semibold))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 5)
+            .background(
+                Capsule().fill(tint.opacity(isHovering ? 0.85 : 1))
+            )
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovering = $0 }
     }
 }

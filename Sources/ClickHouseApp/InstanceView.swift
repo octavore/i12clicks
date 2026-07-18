@@ -115,17 +115,34 @@ struct InstanceView: View {
     }
 
     private func pathRow(_ url: URL) -> some View {
-        HStack {
-            Text(url.path)
-                .font(.system(.callout, design: .monospaced))
-                .lineLimit(1)
-                .truncationMode(.middle)
+        HStack(spacing: 8) {
+            Button {
+                NSWorkspace.shared.activateFileViewerSelecting([url])
+            } label: {
+                Text(url.path)
+                    .font(.system(.callout, design: .monospaced))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            .buttonStyle(.link)
+            .help("Reveal in Finder\n\(url.path)")
+
+            Button {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(url.path, forType: .string)
+            } label: {
+                Image(systemName: "doc.on.doc")
+            }
+            .buttonStyle(.plain)
+            .help("Copy path")
+
             Button {
                 NSWorkspace.shared.activateFileViewerSelecting([url])
             } label: {
                 Image(systemName: "folder")
             }
             .buttonStyle(.plain)
+            .help("Reveal in Finder")
         }
     }
 }

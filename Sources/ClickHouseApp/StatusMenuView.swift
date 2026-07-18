@@ -6,46 +6,41 @@ struct StatusMenuView: View {
     @Environment(\.openSettings) private var openSettings
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            if store.instances.isEmpty {
-                Text("No instances yet").foregroundStyle(.secondary)
-            } else {
-                ForEach(store.instances) { instance in
-                    InstanceMenuRow(instance: instance) {
-                        store.selectedInstanceID = instance.id
-                        openWindow(id: "main")
-                    }
+        if store.instances.isEmpty {
+            Text("No instances yet")
+        } else {
+            ForEach(store.instances) { instance in
+                InstanceMenu(instance: instance) {
+                    store.selectedInstanceID = instance.id
+                    openWindow(id: "main")
                 }
             }
-
-            Divider()
-
-            Button("Open ClickHouse Window") { openWindow(id: "main") }
-            Button("Settings…") { openSettings() }
-
-            Divider()
-
-            Button("Quit ClickHouseApp") {
-                for instance in store.instances { instance.stop() }
-                NSApplication.shared.terminate(nil)
-            }
         }
-        .padding(8)
-        .frame(minWidth: 240)
+
+        Divider()
+
+        Button("Open ClickHouseApp...") { openWindow(id: "main") }
+
+        Button("Settings...") { openSettings() }
+            .keyboardShortcut(",", modifiers: .command)
+
+        Divider()
+
+        Button("Quit ClickHouseApp") {
+            NSApplication.shared.terminate(nil)
+        }
+        .keyboardShortcut("q", modifiers: .command)
     }
 }
 
-private struct InstanceMenuRow: View {
+/// Each instance gets a native submenu: its status as the title/icon, and the
+/// relevant action nested inside.
+private struct InstanceMenu: View {
     @ObservedObject var instance: InstanceManager
     let onOpen: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Button(action: onOpen) {
-                statusLine
-            }
-            .buttonStyle(.plain)
-
+        Menu {
             switch instance.state {
             case .notDownloaded:
                 Button("Download ClickHouse") {
@@ -53,35 +48,32 @@ private struct InstanceMenuRow: View {
                 }
             case .downloading(let progress):
                 Text("Downloading… \(Int(progress * 100))%")
-                    .foregroundStyle(.secondary)
             case .stopped, .failed:
                 Button("Start Server") { instance.start() }
             case .starting:
-                Text("Starting…").foregroundStyle(.secondary)
+                Text("Starting…")
             case .running:
                 Button("Stop Server") { instance.stop() }
             }
+
+            Button("Show in App", action: onOpen)
+        } label: {
+            Label(title, systemImage: statusIcon)
         }
-        .padding(.vertical, 2)
     }
 
-    @ViewBuilder
-    private var statusLine: some View {
+    private var title: String {
+        instance.state == .running
+            ? "\(instance.name): port \(String(instance.httpPort))" : instance.name
+    }
+
+    private var statusIcon: String {
         switch instance.state {
-        case .notDownloaded:
-            Label(instance.name, systemImage: "arrow.down.circle")
-        case .downloading:
-            Label(instance.name, systemImage: "arrow.down.circle")
-        case .stopped:
-            Label(instance.name, systemImage: "circle")
-        case .starting:
-            Label(instance.name, systemImage: "circle.dotted")
-        case .running:
-            Label("\(instance.name) — port \(String(instance.httpPort))", systemImage: "checkmark.circle.fill")
-                .foregroundStyle(.green)
-        case .failed:
-            Label(instance.name, systemImage: "exclamationmark.triangle.fill")
-                .foregroundStyle(.red)
+        case .notDownloaded, .downloading: return "arrow.down.circle"
+        case .stopped: return "circle"
+        case .starting: return "circle.dotted"
+        case .running: return "checkmark.circle.fill"
+        case .failed: return "exclamationmark.triangle.fill"
         }
     }
 }

@@ -7,7 +7,8 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "ClickHouseApp",
-            path: "Sources/ClickHouseApp"
+            path: "Sources/ClickHouseApp",
+            resources: [.copy("Resources/clickhouse.svg")]
         ),
     ]
 )

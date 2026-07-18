@@ -1,32 +1,9 @@
-# strudel build configuration
-# See `strudel help config` for the full list of options.
-
 [app]
 name      = "ClickHouseApp"
 bundle_id = "com.breakfastlabs.clickhouse"
 version   = "0.1.0"
-# build_number = "1"  # optional, defaults to "1"
 
-# Paths are relative to this file's directory unless absolute.
 [build]
-# source_dir             = "."                  # default: current dir
-# entitlements_json_path = "entitlements.json"  # default: none
-# Bundle icon; either a png or icns file copied in unmodified (set icon.path),
-# or generate an icon from a png/svg at build time:
-icon.src        = "clickhouse.svg"
+icon.src        = "Sources/ClickHouseApp/Resources/clickhouse.svg"
 icon.scale      = 0.9  # optional
 icon.background = "#FCFF74"
-
-# Apple developer identifiers, used for signing and notarization.
-# Can also be set via env vars.
-# [apple]
-# identity     = "Developer ID Application: Your Name (XXXXXXXXXX)"
-# team_id      = "XXXXXXXXXX"
-# api_key      = "2X9R4HXF34"
-# api_key_path = "AuthKey_2X9R4HXF34.p8"
-
-# A DMG with a styled Finder window is created by default for `strudel release`.
-# See help for customizing the DMG window.
-# Set plain = true for a plain unstyled DMG instead.
-# [dmg]
-# plain = true

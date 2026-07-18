@@ -43,6 +43,12 @@ final class InstanceManager: ObservableObject, @MainActor Identifiable {
     var logPath: URL { instanceDir.appendingPathComponent("server.log") }
     private var binaryPath: URL { binaryManager.binaryPath(for: config.version) }
 
+    // Secondary listeners are derived from the unique HTTP port so instances
+    // never share the fixed ClickHouse defaults (9004 / 9005 / 9009).
+    private var mysqlPort: Int { httpPort + 1000 }
+    private var postgresPort: Int { httpPort + 2000 }
+    private var interserverHTTPPort: Int { httpPort + 3000 }
+
     init(config: InstanceConfig, instanceDir: URL) {
         self.config = config
         self.instanceDir = instanceDir
@@ -132,6 +138,12 @@ final class InstanceManager: ObservableObject, @MainActor Identifiable {
             "--listen_host=127.0.0.1",
             "--http_port=\(httpPort)",
             "--tcp_port=\(tcpPort)",
+            // ClickHouse also opens MySQL (9004), PostgreSQL (9005) and interserver
+            // HTTP (9009) on fixed defaults. Remap them to per-instance values
+            // derived from the (unique) HTTP port so multiple instances don't collide.
+            "--mysql_port=\(mysqlPort)",
+            "--postgresql_port=\(postgresPort)",
+            "--interserver_http_port=\(interserverHTTPPort)",
         ]
 
         fm.createFile(atPath: logPath.path, contents: nil)

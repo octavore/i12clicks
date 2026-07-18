@@ -45,6 +45,16 @@ struct CreateInstanceSheet: View {
             if binaryManager.availableReleases.isEmpty {
                 await binaryManager.refreshReleases()
             }
+            selectDefaultVersionIfNeeded()
         }
+        .onChange(of: binaryManager.availableReleases.map(\.tag)) { _, _ in
+            selectDefaultVersionIfNeeded()
+        }
+    }
+
+    /// Preselect the newest available release so the common path is one click.
+    private func selectDefaultVersionIfNeeded() {
+        guard selectedVersion == nil else { return }
+        selectedVersion = binaryManager.availableReleases.first?.tag
     }
 }

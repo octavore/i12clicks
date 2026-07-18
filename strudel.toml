@@ -1,9 +1,10 @@
 [app]
-name      = "InternationalClicks"
+name      = "International Clicks"
 bundle_id = "com.breakfastlabs.i18clicks"
 version   = "0.1.0"
 
 [build]
+target_name     = "InternationalClicks"
 icon.src        = "Sources/pancakes.png"
 icon.scale      = 0.9  # optional
 icon.background = "#FCFF74"

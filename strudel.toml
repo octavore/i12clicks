@@ -1,6 +1,6 @@
 [app]
 name      = "International Clicks"
-bundle_id = "com.breakfastlabs.i18clicks"
+bundle_id = "com.breakfastlabs.i12clicks"
 version   = "0.1.0"
 
 [build]

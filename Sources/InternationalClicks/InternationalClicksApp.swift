@@ -26,9 +26,8 @@ struct InternationalClicksApp: App {
             // we do the check here.
             Image(nsImage: Self.menuBarIcon)
                 .onAppear {
-                    if store.instances.isEmpty {
-                        openWindow(id: "main")
-                    }
+                    appDelegate.openWindow = openWindow
+                    openWindow(id: "main")
                 }
         }
         .menuBarExtraStyle(.menu)

@@ -3,14 +3,25 @@ import SwiftUI
 struct GeneralSettingsView: View {
     @EnvironmentObject var store: InstanceStore
     @ObservedObject var binaryManager = BinaryManager.shared
+    @AppStorage(QuitBehavior.defaultsKey) private var quitBehavior: QuitBehavior = .ask
 
     @State private var installedVersions: [BinaryManager.InstalledVersion] = []
     @State private var pendingDeleteVersion: String?
     @State private var showDeleteAllConfirmation = false
     @State private var isDeletingAll = false
+    @State private var showResetSettingsConfirmation = false
 
     var body: some View {
         Form {
+            Section("When Closing or Quitting") {
+                Picker("If instances are running:", selection: $quitBehavior) {
+                    ForEach(QuitBehavior.allCases) { behavior in
+                        Text(behavior.displayName).tag(behavior)
+                    }
+                }
+                .pickerStyle(.menu)
+            }
+
             Section("Installed ClickHouse Versions") {
                 if installedVersions.isEmpty {
                     Text("No versions downloaded yet").foregroundStyle(.secondary)
@@ -50,6 +61,14 @@ struct GeneralSettingsView: View {
                         Text("Delete All Application Data…")
                     }
                     .disabled(isDeletingAll)
+
+                    Text("Resets every preference in this app (such as the quit behavior above) back to its default.")
+                        .foregroundStyle(.secondary)
+                    Button(role: .destructive) {
+                        showResetSettingsConfirmation = true
+                    } label: {
+                        Text("Reset All Settings…")
+                    }
                 }
             }
         }
@@ -95,6 +114,25 @@ struct GeneralSettingsView: View {
                 "This stops all instances and permanently deletes every instance, its data, and all downloaded ClickHouse binaries. This cannot be undone."
             )
         }
+        .confirmationDialog(
+            "Reset all settings?",
+            isPresented: $showResetSettingsConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Reset Settings", role: .destructive) { resetAllSettings() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(
+                "This resets every preference back to its default. Your instances and downloaded binaries are not affected."
+            )
+        }
+    }
+
+    private func resetAllSettings() {
+        if let bundleID = Bundle.main.bundleIdentifier {
+            UserDefaults.standard.removePersistentDomain(forName: bundleID)
+        }
+        quitBehavior = .ask
     }
 
     private func refresh() {

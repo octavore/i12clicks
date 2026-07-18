@@ -121,4 +121,19 @@ final class InstanceStore: ObservableObject {
             selectedInstanceID = instances.first?.id
         }
     }
+
+    /// Stops every instance, then deletes the entire application support
+    /// directory: instance data, saved configs, and downloaded binaries.
+    func deleteAllApplicationData() async {
+        for instance in instances {
+            await instance.stopAndWait()
+        }
+
+        try? fm.removeItem(at: appSupportDir)
+        try? fm.createDirectory(at: appSupportDir, withIntermediateDirectories: true)
+
+        instances.removeAll()
+        configCancellables.removeAll()
+        selectedInstanceID = nil
+    }
 }

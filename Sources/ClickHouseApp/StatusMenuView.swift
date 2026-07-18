@@ -1,76 +1,87 @@
 import SwiftUI
 
 struct StatusMenuView: View {
-    @EnvironmentObject var server: ServerManager
+    @EnvironmentObject var store: InstanceStore
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.openSettings) private var openSettings
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            statusLine
+            if store.instances.isEmpty {
+                Text("No instances yet").foregroundStyle(.secondary)
+            } else {
+                ForEach(store.instances) { instance in
+                    InstanceMenuRow(instance: instance) {
+                        store.selectedInstanceID = instance.id
+                        openWindow(id: "main")
+                    }
+                }
+            }
 
             Divider()
 
-            switch server.state {
+            Button("Open ClickHouse Window") { openWindow(id: "main") }
+            Button("Settings…") { openSettings() }
+
+            Divider()
+
+            Button("Quit ClickHouseApp") {
+                for instance in store.instances { instance.stop() }
+                NSApplication.shared.terminate(nil)
+            }
+        }
+        .padding(8)
+        .frame(minWidth: 240)
+    }
+}
+
+private struct InstanceMenuRow: View {
+    @ObservedObject var instance: InstanceManager
+    let onOpen: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Button(action: onOpen) {
+                statusLine
+            }
+            .buttonStyle(.plain)
+
+            switch instance.state {
             case .notDownloaded:
                 Button("Download ClickHouse") {
-                    Task { await server.ensureBinaryDownloaded() }
+                    Task { await instance.ensureBinaryDownloaded() }
                 }
             case .downloading(let progress):
                 Text("Downloading… \(Int(progress * 100))%")
                     .foregroundStyle(.secondary)
             case .stopped, .failed:
-                Button("Start Server") { server.start() }
+                Button("Start Server") { instance.start() }
             case .starting:
                 Text("Starting…").foregroundStyle(.secondary)
             case .running:
-                Button("Stop Server") { server.stop() }
-            }
-
-            Button("Open ClickHouse Window") { openWindow(id: "main") }
-
-            Divider()
-
-            Button("Reveal Data Directory") {
-                NSWorkspace.shared.activateFileViewerSelecting([server.dataDirectoryURL])
-            }
-            Button("Reveal Log File") {
-                NSWorkspace.shared.activateFileViewerSelecting([server.logPath])
-            }
-
-            Divider()
-
-            Button("Quit ClickHouseApp") {
-                server.stop()
-                NSApplication.shared.terminate(nil)
+                Button("Stop Server") { instance.stop() }
             }
         }
-        .padding(8)
-        .frame(minWidth: 220)
-    }
-
-    private var isRunning: Bool {
-        if case .running = server.state { return true }
-        return false
+        .padding(.vertical, 2)
     }
 
     @ViewBuilder
     private var statusLine: some View {
-        switch server.state {
+        switch instance.state {
         case .notDownloaded:
-            Label("Not downloaded", systemImage: "arrow.down.circle")
+            Label(instance.name, systemImage: "arrow.down.circle")
         case .downloading:
-            Label("Downloading", systemImage: "arrow.down.circle")
+            Label(instance.name, systemImage: "arrow.down.circle")
         case .stopped:
-            Label("Stopped", systemImage: "circle")
+            Label(instance.name, systemImage: "circle")
         case .starting:
-            Label("Starting", systemImage: "circle.dotted")
+            Label(instance.name, systemImage: "circle.dotted")
         case .running:
-            Label("Running on port \(server.httpPort)", systemImage: "checkmark.circle.fill")
+            Label("\(instance.name) — port \(String(instance.httpPort))", systemImage: "checkmark.circle.fill")
                 .foregroundStyle(.green)
-        case .failed(let message):
-            Label(message, systemImage: "exclamationmark.triangle.fill")
+        case .failed:
+            Label(instance.name, systemImage: "exclamationmark.triangle.fill")
                 .foregroundStyle(.red)
-                .lineLimit(3)
         }
     }
 }

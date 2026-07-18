@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct QueryWindowView: View {
-    @EnvironmentObject var server: ServerManager
+    @ObservedObject var instance: InstanceManager
 
     @State private var sql = "SHOW TABLES"
     @State private var result: QueryResult?
@@ -54,7 +54,7 @@ struct QueryWindowView: View {
         isRunning = true
         defer { isRunning = false }
         do {
-            result = try await QueryClient.run(sql: sql, port: server.httpPort)
+            result = try await QueryClient.run(sql: sql, port: instance.httpPort)
         } catch {
             result = nil
             errorMessage = error.localizedDescription

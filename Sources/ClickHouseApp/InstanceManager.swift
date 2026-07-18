@@ -2,7 +2,7 @@ import Foundation
 import Combine
 import Darwin
 
-enum ServerState: Equatable {
+enum InstanceState: Equatable {
     case notDownloaded
     case downloading(progress: Double)
     case stopped
@@ -12,36 +12,43 @@ enum ServerState: Equatable {
 }
 
 @MainActor
-final class ServerManager: ObservableObject {
-    @Published private(set) var state: ServerState = .notDownloaded
+final class InstanceManager: ObservableObject, @MainActor Identifiable {
+    @Published var config: InstanceConfig
+    @Published private(set) var state: InstanceState = .notDownloaded
     @Published private(set) var version: String?
     @Published private(set) var uptimeText: String?
+    @Published private(set) var diskUsageText: String?
+    @Published private(set) var logTail: String = ""
 
-    let httpPort = 8123
-    let tcpPort = 9000
+    var id: UUID { config.id }
+    var httpPort: Int { config.httpPort }
+    var tcpPort: Int { config.tcpPort }
+    var name: String { config.name }
+    var majorMinorVersion: String { config.majorMinorVersion }
 
+    private let binaryManager = BinaryManager.shared
     private var process: Process?
-    private var downloadObservation: NSKeyValueObservation?
     private var startedAt: Date?
     private var uptimeTimer: Timer?
     /// PID of a server we didn't spawn ourselves (e.g. left running by a
     /// previous app session that quit without calling stop()), discovered via
     /// the ClickHouse status lock file.
     private var externalPID: pid_t?
+    private var logTailer: LogTailer?
 
     private let fm = FileManager.default
+    private let instanceDir: URL
 
-    private var appSupportDir: URL {
-        fm.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("ClickHouseApp", isDirectory: true)
-    }
+    var dataDirectoryURL: URL { instanceDir.appendingPathComponent("data", isDirectory: true) }
+    var logPath: URL { instanceDir.appendingPathComponent("server.log") }
+    private var binaryPath: URL { binaryManager.binaryPath(for: config.version) }
 
-    private var binDir: URL { appSupportDir.appendingPathComponent("bin", isDirectory: true) }
-    private var binaryPath: URL { binDir.appendingPathComponent("clickhouse") }
-    private var dataDir: URL { appSupportDir.appendingPathComponent("data", isDirectory: true) }
-    var logPath: URL { appSupportDir.appendingPathComponent("server.log") }
+    init(config: InstanceConfig, instanceDir: URL) {
+        self.config = config
+        self.instanceDir = instanceDir
 
-    init() {
+        try? fm.createDirectory(at: dataDirectoryURL, withIntermediateDirectories: true)
+
         if fm.fileExists(atPath: binaryPath.path) {
             fetchVersion()
             if let pid = aliveStatusFilePID() {
@@ -49,10 +56,13 @@ final class ServerManager: ObservableObject {
                 state = .running
                 startedAt = statusFileStartDate() ?? Date()
                 startUptimeTimer()
+                startLogTailing()
             } else {
                 state = .stopped
             }
         }
+
+        refreshDiskUsage()
     }
 
     private func fetchVersion() {
@@ -74,66 +84,22 @@ final class ServerManager: ObservableObject {
         }
     }
 
-    private var downloadURL: URL {
-        #if arch(arm64)
-        let path = "master/macos-aarch64/clickhouse"
-        #else
-        let path = "master/macos/clickhouse"
-        #endif
-        return URL(string: "https://builds.clickhouse.com/\(path)")!
-    }
-
     func ensureBinaryDownloaded() async {
         if fm.fileExists(atPath: binaryPath.path) {
             state = .stopped
             return
         }
 
+        state = .downloading(progress: 0)
         do {
-            try fm.createDirectory(at: binDir, withIntermediateDirectories: true)
-            try fm.createDirectory(at: dataDir, withIntermediateDirectories: true)
-
-            state = .downloading(progress: 0)
-
-            let finalTempURL = try await downloadWithProgress(from: downloadURL) { [weak self] progress in
+            try await binaryManager.ensureDownloaded(version: config.version) { [weak self] progress in
                 Task { @MainActor in self?.state = .downloading(progress: progress) }
             }
-
-            if fm.fileExists(atPath: binaryPath.path) {
-                try fm.removeItem(at: binaryPath)
-            }
-            try fm.moveItem(at: finalTempURL, to: binaryPath)
-
-            try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: binaryPath.path)
-            try? removeQuarantine(at: binaryPath)
-
             state = .stopped
             fetchVersion()
         } catch {
             state = .failed("Download failed: \(error.localizedDescription)")
         }
-    }
-
-    private func downloadWithProgress(
-        from url: URL,
-        onProgress: @escaping (Double) -> Void
-    ) async throws -> URL {
-        let delegate = DownloadProgressDelegate(onProgress: onProgress)
-        let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
-        defer { session.finishTasksAndInvalidate() }
-
-        return try await withCheckedThrowingContinuation { continuation in
-            delegate.onFinish = { result in continuation.resume(with: result) }
-            session.downloadTask(with: url).resume()
-        }
-    }
-
-    private func removeQuarantine(at url: URL) throws {
-        let p = Process()
-        p.executableURL = URL(fileURLWithPath: "/usr/bin/xattr")
-        p.arguments = ["-d", "com.apple.quarantine", url.path]
-        try p.run()
-        p.waitUntilExit()
     }
 
     func start() {
@@ -148,6 +114,7 @@ final class ServerManager: ObservableObject {
             state = .running
             startedAt = statusFileStartDate() ?? Date()
             startUptimeTimer()
+            startLogTailing()
             return
         }
 
@@ -157,11 +124,11 @@ final class ServerManager: ObservableObject {
 
         let p = Process()
         p.executableURL = binaryPath
-        p.currentDirectoryURL = dataDir
+        p.currentDirectoryURL = dataDirectoryURL
         p.arguments = [
             "server",
             "--",
-            "--path=\(dataDir.path)/",
+            "--path=\(dataDirectoryURL.path)/",
             "--listen_host=127.0.0.1",
             "--http_port=\(httpPort)",
             "--tcp_port=\(tcpPort)",
@@ -177,6 +144,7 @@ final class ServerManager: ObservableObject {
             Task { @MainActor in
                 self?.process = nil
                 self?.stopUptimeTimer()
+                self?.stopLogTailing()
                 if case .failed = self?.state ?? .stopped {
                     // preserve failure reason
                 } else {
@@ -188,6 +156,7 @@ final class ServerManager: ObservableObject {
         do {
             try p.run()
             process = p
+            startLogTailing()
             Task {
                 try? await Task.sleep(for: .seconds(1))
                 await MainActor.run {
@@ -212,12 +181,24 @@ final class ServerManager: ObservableObject {
             kill(pid, SIGTERM)
             externalPID = nil
             stopUptimeTimer()
+            stopLogTailing()
             state = .stopped
         }
     }
 
+    /// Stops the instance and blocks (async) until the process is no longer running,
+    /// used before deleting the instance's files. Times out after ~3s.
+    func stopAndWait() async {
+        guard process != nil || externalPID != nil else { return }
+        stop()
+        for _ in 0..<30 {
+            if process == nil && externalPID == nil { return }
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+    }
+
     private func statusFilePID() -> pid_t? {
-        let statusPath = dataDir.appendingPathComponent("status").path
+        let statusPath = dataDirectoryURL.appendingPathComponent("status").path
         guard let contents = try? String(contentsOfFile: statusPath, encoding: .utf8),
               let pidLine = contents.split(separator: "\n").first(where: { $0.hasPrefix("PID:") }),
               let pid = pid_t(pidLine.dropFirst("PID:".count).trimmingCharacters(in: .whitespaces))
@@ -231,7 +212,7 @@ final class ServerManager: ObservableObject {
     }
 
     private func statusFileStartDate() -> Date? {
-        let statusPath = dataDir.appendingPathComponent("status").path
+        let statusPath = dataDirectoryURL.appendingPathComponent("status").path
         guard let contents = try? String(contentsOfFile: statusPath, encoding: .utf8),
               let line = contents.split(separator: "\n").first(where: { $0.hasPrefix("Started at:") })
         else { return nil }
@@ -247,7 +228,7 @@ final class ServerManager: ObservableObject {
     /// the file survives even though no server is actually running, so we clear
     /// it here when the recorded PID is no longer alive.
     private func removeStaleStatusFileIfNeeded() {
-        let statusPath = dataDir.appendingPathComponent("status").path
+        let statusPath = dataDirectoryURL.appendingPathComponent("status").path
         guard fm.fileExists(atPath: statusPath), aliveStatusFilePID() == nil else { return }
         try? fm.removeItem(atPath: statusPath)
     }
@@ -276,45 +257,43 @@ final class ServerManager: ObservableObject {
         uptimeText = h > 0 ? String(format: "%d:%02d:%02d", h, m, s) : String(format: "%d:%02d", m, s)
     }
 
-    var dataDirectoryURL: URL { dataDir }
-}
-
-private final class DownloadProgressDelegate: NSObject, URLSessionDownloadDelegate {
-    nonisolated(unsafe) let onProgress: (Double) -> Void
-    nonisolated(unsafe) var onFinish: ((Result<URL, Error>) -> Void)?
-
-    init(onProgress: @escaping (Double) -> Void) {
-        self.onProgress = onProgress
-    }
-
-    func urlSession(
-        _ session: URLSession,
-        downloadTask: URLSessionDownloadTask,
-        didWriteData bytesWritten: Int64,
-        totalBytesWritten: Int64,
-        totalBytesExpectedToWrite: Int64
-    ) {
-        guard totalBytesExpectedToWrite > 0 else { return }
-        onProgress(Double(totalBytesWritten) / Double(totalBytesExpectedToWrite))
-    }
-
-    func urlSession(
-        _ session: URLSession,
-        downloadTask: URLSessionDownloadTask,
-        didFinishDownloadingTo location: URL
-    ) {
-        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        do {
-            try FileManager.default.moveItem(at: location, to: tempURL)
-            onFinish?(.success(tempURL))
-        } catch {
-            onFinish?(.failure(error))
+    private func startLogTailing() {
+        guard logTailer == nil else { return }
+        let tailer = LogTailer(url: logPath) { [weak self] text in
+            self?.logTail = text
         }
+        tailer.start()
+        logTailer = tailer
     }
 
-    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
-        if let error {
-            onFinish?(.failure(error))
+    private func stopLogTailing() {
+        logTailer?.stop()
+        logTailer = nil
+    }
+
+    func refreshDiskUsage() {
+        let dir = dataDirectoryURL
+        Task.detached {
+            let fm = FileManager.default
+            var total: Int64 = 0
+            if let enumerator = fm.enumerator(
+                at: dir,
+                includingPropertiesForKeys: [.fileSizeKey, .isRegularFileKey],
+                options: [.skipsHiddenFiles]
+            ) {
+                while let url = enumerator.nextObject() as? URL {
+                    if let values = try? url.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey]),
+                       values.isRegularFile == true {
+                        total += Int64(values.fileSize ?? 0)
+                    }
+                }
+            }
+            let formatter = ByteCountFormatter()
+            formatter.countStyle = .file
+            let text = formatter.string(fromByteCount: total)
+            await MainActor.run { [weak self] in
+                self?.diskUsageText = text
+            }
         }
     }
 }
